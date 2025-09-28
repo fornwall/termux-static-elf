@@ -94,15 +94,15 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	Elf_Ehdr ehdr;
 	Elf_Phdr *phdr;
 	Elf_auxv_t *av;
-	char **argv, **env, **p;
+	char **env, **p;
 	const char *file;
 	ssize_t sz;
-	int argc, fd;
+	int fd;
 
 	(void)fini;
 
-	argc = (int)*(sp);
-	argv = (char **)(sp + 1);
+	int argc = (int)*(sp);
+	char** argv = (char **)(sp + 1);
 	env = p = (char **)&argv[argc + 1];
 	while (*p++ != NULL)
 		;
