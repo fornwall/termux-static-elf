@@ -89,29 +89,50 @@ err:
 	return LOAD_ERR;
 }
 
-void z_entry(unsigned long *sp, void (*fini)(void))
+//void z_entry(unsigned long *sp, void (*fini)(void))
+void exec_elf(unsigned long *entry_sp, const char *file, int argc, char *argv[])
 {
 	Elf_Ehdr ehdr;
 	Elf_Phdr *phdr;
 	Elf_auxv_t *av;
 	char **env, **p;
-	const char *file;
+	unsigned long *sp = entry_sp;
 	ssize_t sz;
 	int fd;
 
-	(void)fini;
 
-	int argc = (int)*(sp);
-	char** argv = (char **)(sp + 1);
+	{
+		unsigned long *p = sp;
+		/* argc */
+		p++;
+		/* argv */
+		while (*p++ != 0);
+
+		unsigned long *from = p;
+		/* env */
+		while (*p++ != 0);
+		/* aux vector */
+		while (*p++ != 0) {
+			p++;
+		}
+		p++;
+
+		unsigned long argv_sz = argc * sizeof(*p);
+		unsigned sz = (char *)p - (char *)from;
+		p = alloca(sizeof(*p) + argv_sz + sz);
+		*p = argc;
+		z_memcpy(p + 1, argv, argv_sz);
+		z_memcpy((char *)(p + 1) + argv_sz, from, sz);
+		sp = p;
+		argv = (char **)sp + 1;
+	}
+
 	env = p = (char **)&argv[argc + 1];
 	while (*p++ != NULL)
 		;
 	av = (void *)p;
 
 	(void)env;
-	if (argc < 2)
-		z_errx(1, "no input file");
-	file = argv[1];
 
 		/* Open file, read and than check ELF header.*/
 		if ((fd = z_open(file, O_RDONLY)) < 0)
@@ -154,13 +175,25 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	++av;
 
 	/* Shift argv, env and av. */
+	/*
 	z_memcpy(&argv[0], &argv[1],
 		 (unsigned long)av - (unsigned long)&argv[1]);
+		 */
 	/* SP points to argc. */
-	(*sp)--;
+	//(*sp)--;
 
 	z_trampo((void (*)(void))(ehdr.e_entry), sp, z_fini);
 	/* Should not reach. */
 	z_exit(0);
 }
 
+int main(int argc, char *argv[])
+{
+  /* We assume that argv comes from the original executable params. */
+  unsigned long* entry_sp = (unsigned long*)argv - 1; 
+
+	if (argc < 2)
+		z_errx(1, "no input file");
+
+	exec_elf(entry_sp, argv[1], argc - 1, argv + 1);
+}
