@@ -1,6 +1,6 @@
 # make ARCH=i386 SMALL=1 DEBUG=1
 
-ARCH ?= amd64
+ARCH ?= aarch64
 
 ARCHS32 := i386
 ARCHS64 := amd64 aarch64
