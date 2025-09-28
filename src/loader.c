@@ -97,7 +97,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	Elf_Phdr *phdr, *iter;
 	Elf_auxv_t *av;
 	char **argv, **env, **p;
-	unsigned long base[2], entry;
+	unsigned long base, entry;
 	const char *file;
 	ssize_t sz;
 	int argc, fd, i = 0;
@@ -132,11 +132,11 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		if (z_read(fd, phdr, sz) != sz)
 			z_errx(1, "can't read program header %s", file);
 		/* Time to load ELF. */
-		if ((base[i] = loadelf_anon(fd, ehdr, phdr)) == LOAD_ERR)
+		if ((base = loadelf_anon(fd, ehdr, phdr)) == LOAD_ERR)
 			z_errx(1, "can't load ELF %s", file);
 
 		/* Set the entry point, if the file is dynamic than add bias. */
-		entry = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base[i] : 0);
+		entry = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base : 0);
 
 		z_close(fd);
 
@@ -145,7 +145,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 #define AVSET(t, v, expr) case (t): (v)->a_un.a_val = (expr); break
 	while (av->a_type != AT_NULL) {
 		switch (av->a_type) {
-		AVSET(AT_PHDR, av, base[Z_PROG] + ehdrs[Z_PROG].e_phoff);
+		AVSET(AT_PHDR, av, base + ehdrs[Z_PROG].e_phoff);
 		AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
 		AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
 		AVSET(AT_ENTRY, av, entry);
