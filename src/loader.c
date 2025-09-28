@@ -93,14 +93,14 @@ err:
 
 void z_entry(unsigned long *sp, void (*fini)(void))
 {
-	Elf_Ehdr ehdrs[2], *ehdr = ehdrs;
-	Elf_Phdr *phdr, *iter;
+	Elf_Ehdr ehdr;
+	Elf_Phdr *phdr;
 	Elf_auxv_t *av;
 	char **argv, **env, **p;
 	unsigned long base, entry;
 	const char *file;
 	ssize_t sz;
-	int argc, fd, i = 0;
+	int argc, fd;
 
 	(void)fini;
 
@@ -119,24 +119,24 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		/* Open file, read and than check ELF header.*/
 		if ((fd = z_open(file, O_RDONLY)) < 0)
 			z_errx(1, "can't open %s", file);
-		if (z_read(fd, ehdr, sizeof(*ehdr)) != sizeof(*ehdr))
+		if (z_read(fd, &ehdr, sizeof(ehdr)) != sizeof(ehdr))
 			z_errx(1, "can't read ELF header %s", file);
-		if (!check_ehdr(ehdr))
+		if (!check_ehdr(&ehdr))
 			z_errx(1, "bogus ELF header %s", file);
 
 		/* Read the program header. */
-		sz = ehdr->e_phnum * sizeof(Elf_Phdr);
+		sz = ehdr.e_phnum * sizeof(Elf_Phdr);
 		phdr = z_alloca(sz);
-		if (z_lseek(fd, ehdr->e_phoff, SEEK_SET) < 0)
+		if (z_lseek(fd, ehdr.e_phoff, SEEK_SET) < 0)
 			z_errx(1, "can't lseek to program header %s", file);
 		if (z_read(fd, phdr, sz) != sz)
 			z_errx(1, "can't read program header %s", file);
 		/* Time to load ELF. */
-		if ((base = loadelf_anon(fd, ehdr, phdr)) == LOAD_ERR)
+		if ((base = loadelf_anon(fd, &ehdr, phdr)) == LOAD_ERR)
 			z_errx(1, "can't load ELF %s", file);
 
 		/* Set the entry point, if the file is dynamic than add bias. */
-		entry = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base : 0);
+		entry = ehdr.e_entry + (ehdr.e_type == ET_DYN ? base : 0);
 
 		z_close(fd);
 
@@ -145,9 +145,9 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 #define AVSET(t, v, expr) case (t): (v)->a_un.a_val = (expr); break
 	while (av->a_type != AT_NULL) {
 		switch (av->a_type) {
-		AVSET(AT_PHDR, av, base + ehdrs[Z_PROG].e_phoff);
-		AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
-		AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
+		AVSET(AT_PHDR, av, base + ehdr.e_phoff);
+		AVSET(AT_PHNUM, av, ehdr.e_phnum);
+		AVSET(AT_PHENT, av, ehdr.e_phentsize);
 		AVSET(AT_ENTRY, av, entry);
 		AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
 		AVSET(AT_BASE, av, av->a_un.a_val);
