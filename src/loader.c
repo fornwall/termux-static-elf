@@ -90,18 +90,17 @@ err:
 }
 
 #define Z_PROG		0
-#define Z_INTERP	1
 
 void z_entry(unsigned long *sp, void (*fini)(void))
 {
 	Elf_Ehdr ehdrs[2], *ehdr = ehdrs;
 	Elf_Phdr *phdr, *iter;
 	Elf_auxv_t *av;
-	char **argv, **env, **p, *elf_interp = NULL;
-	unsigned long base[2], entry[2];
+	char **argv, **env, **p;
+	unsigned long base[2], entry;
 	const char *file;
 	ssize_t sz;
-	int argc, fd, i;
+	int argc, fd, i = 0;
 
 	(void)fini;
 
@@ -117,7 +116,6 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		z_errx(1, "no input file");
 	file = argv[1];
 
-	for (i = 0;; i++, ehdr++) {
 		/* Open file, read and than check ELF header.*/
 		if ((fd = z_open(file, O_RDONLY)) < 0)
 			z_errx(1, "can't open %s", file);
@@ -138,32 +136,9 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 			z_errx(1, "can't load ELF %s", file);
 
 		/* Set the entry point, if the file is dynamic than add bias. */
-		entry[i] = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base[i] : 0);
-		/* The second round, we've loaded ELF interp. */
-		if (file == elf_interp) {
-			z_close(fd);
-			break;
-		}
-
-		for (iter = phdr; iter < &phdr[ehdr->e_phnum]; iter++) {
-			if (iter->p_type != PT_INTERP)
-				continue;
-			elf_interp = z_alloca(iter->p_filesz);
-			if (z_lseek(fd, iter->p_offset, SEEK_SET) < 0)
-				z_errx(1, "can't lseek interp segment");
-			if (z_read(fd, elf_interp, iter->p_filesz) !=
-					(ssize_t)iter->p_filesz)
-				z_errx(1, "can't read interp segment");
-			if (elf_interp[iter->p_filesz - 1] != '\0')
-				z_errx(1, "bogus interp path");
-			file = elf_interp;
-		}
+		entry = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base[i] : 0);
 
 		z_close(fd);
-		/* Looks like the ELF is static -- leave the loop. */
-		if (elf_interp == NULL)
-			break;
-	}
 
 	/* Reassign some vectors that are important for
 	 * the dynamic linker and for lib C. */
@@ -173,10 +148,9 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		AVSET(AT_PHDR, av, base[Z_PROG] + ehdrs[Z_PROG].e_phoff);
 		AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
 		AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
-		AVSET(AT_ENTRY, av, entry[Z_PROG]);
+		AVSET(AT_ENTRY, av, entry);
 		AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
-		AVSET(AT_BASE, av, elf_interp ?
-				base[Z_INTERP] : av->a_un.a_val);
+		AVSET(AT_BASE, av, av->a_un.a_val);
 		}
 		++av;
 	}
@@ -189,8 +163,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	/* SP points to argc. */
 	(*sp)--;
 
-	z_trampo((void (*)(void))(elf_interp ?
-			entry[Z_INTERP] : entry[Z_PROG]), sp, z_fini);
+	z_trampo((void (*)(void))(entry), sp, z_fini);
 	/* Should not reach. */
 	z_exit(0);
 }
