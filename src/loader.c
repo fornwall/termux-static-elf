@@ -24,7 +24,7 @@ static int check_ehdr(Elf_Ehdr *ehdr)
 		e_ident[EI_MAG2] != ELFMAG2 || e_ident[EI_MAG3] != ELFMAG3 ||
 	    	e_ident[EI_CLASS] != ELFCLASS ||
 		e_ident[EI_VERSION] != EV_CURRENT ||
-		(ehdr->e_type != ET_EXEC && ehdr->e_type != ET_DYN)) ? 0 : 1;
+		(ehdr->e_type != ET_EXEC)) ? 0 : 1;
 }
 
 static unsigned long loadelf_anon(int fd, Elf_Ehdr *ehdr, Elf_Phdr *phdr)
@@ -89,15 +89,12 @@ err:
 	return LOAD_ERR;
 }
 
-#define Z_PROG		0
-
 void z_entry(unsigned long *sp, void (*fini)(void))
 {
 	Elf_Ehdr ehdr;
 	Elf_Phdr *phdr;
 	Elf_auxv_t *av;
 	char **argv, **env, **p;
-	unsigned long base, entry;
 	const char *file;
 	ssize_t sz;
 	int argc, fd;
@@ -132,11 +129,10 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		if (z_read(fd, phdr, sz) != sz)
 			z_errx(1, "can't read program header %s", file);
 		/* Time to load ELF. */
-		if ((base = loadelf_anon(fd, &ehdr, phdr)) == LOAD_ERR)
+	unsigned long base =  loadelf_anon(fd, &ehdr, phdr);
+  if (base == LOAD_ERR) {
 			z_errx(1, "can't load ELF %s", file);
-
-		/* Set the entry point, if the file is dynamic than add bias. */
-		entry = ehdr.e_entry + (ehdr.e_type == ET_DYN ? base : 0);
+	}
 
 		z_close(fd);
 
@@ -148,7 +144,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		AVSET(AT_PHDR, av, base + ehdr.e_phoff);
 		AVSET(AT_PHNUM, av, ehdr.e_phnum);
 		AVSET(AT_PHENT, av, ehdr.e_phentsize);
-		AVSET(AT_ENTRY, av, entry);
+		AVSET(AT_ENTRY, av, ehdr.e_entry);
 		AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
 		AVSET(AT_BASE, av, av->a_un.a_val);
 		}
@@ -163,7 +159,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	/* SP points to argc. */
 	(*sp)--;
 
-	z_trampo((void (*)(void))(entry), sp, z_fini);
+	z_trampo((void (*)(void))(ehdr.e_entry), sp, z_fini);
 	/* Should not reach. */
 	z_exit(0);
 }
